@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 import viettel.dac.backend.common.exception.ResourceNotFoundException;
 import viettel.dac.backend.execution.entity.BaseExecution;
 import viettel.dac.backend.execution.repository.ExecutionRepository;
-import viettel.dac.backend.plugin.PluginService;
+import viettel.dac.backend.plugin.service.PluginService;
 import viettel.dac.backend.template.entity.BaseTemplate;
 import viettel.dac.backend.template.repository.TemplateRepository;
 

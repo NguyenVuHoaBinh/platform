@@ -86,8 +86,16 @@ tool-template:
     default-timeout: 60000
     max-concurrent-executions: 20
     result-retention-days: 30
+  api:
+    connect-timeout: 5000
+    read-timeout: 30000
+    write-timeout: 30000
+    max-connections: 100
+    default-headers:
+      User-Agent: "Tool-Template-System/1.0"
   
   # Cache Configuration
   cache:
     template-time-to-live: 300 # seconds
     execution-time-to-live: 300 # seconds
+

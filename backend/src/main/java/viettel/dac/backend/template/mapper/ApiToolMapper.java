@@ -7,11 +7,7 @@ import viettel.dac.backend.template.dto.ApiToolResponseDto;
 import viettel.dac.backend.template.dto.ApiToolUpdateDto;
 import viettel.dac.backend.template.dto.TemplateCreateDto;
 import viettel.dac.backend.template.entity.ApiToolTemplate;
-import viettel.dac.backend.template.entity.TemplateTag;
 import viettel.dac.backend.template.entity.ToolTemplate;
-
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * MapStruct mapper for converting between ApiToolTemplate entities and DTOs.
@@ -45,16 +41,6 @@ public abstract class ApiToolMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "toolTemplate", ignore = true)
     public abstract void updateApiToolTemplate(ApiToolUpdateDto dto, @MappingTarget ApiToolTemplate template);
-
-    @Named("tagsToStringSet")
-    public Set<String> tagsToStringSet(Set<TemplateTag> tags) {
-        if (tags == null) {
-            return Set.of();
-        }
-        return tags.stream()
-                .map(TemplateTag::getTagName)
-                .collect(Collectors.toSet());
-    }
 
     public ApiToolTemplate createApiToolTemplate(ToolTemplate toolTemplate, ApiToolCreateDto dto) {
         if (toolTemplate == null || dto == null) {

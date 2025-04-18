@@ -28,14 +28,26 @@ public abstract class ApiExecutionResultMapper {
     @Mapping(target = "metrics", source = "executionResult.metrics")
     public abstract ApiExecutionResultResponseDto toResponseDto(ApiExecutionResult apiExecutionResult);
 
-    @Mapping(target = "id", ignore = true)
-    public abstract ApiExecutionResult createApiExecutionResult(
+    /**
+     * Creates a new ApiExecutionResult entity
+     */
+    public ApiExecutionResult createApiExecutionResult(
             ExecutionResult executionResult,
             Integer statusCode,
             Map<String, String> responseHeaders,
             Object responseBody,
             Long responseTimeMs,
-            Boolean successful);
+            Boolean successful) {
+
+        ApiExecutionResult result = new ApiExecutionResult();
+        result.setExecutionResult(executionResult);
+        result.setStatusCode(statusCode);
+        result.setResponseHeaders(responseHeaders);
+        result.setResponseBody(responseBody);
+        result.setResponseTimeMs(responseTimeMs);
+        result.setSuccessful(successful);
+        return result;
+    }
 
     protected String getTemplateName(UUID templateId) {
         return toolTemplateRepository.findById(templateId)

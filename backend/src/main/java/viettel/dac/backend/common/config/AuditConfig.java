@@ -4,6 +4,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import viettel.dac.backend.security.model.UserDetailsImpl;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -12,17 +15,19 @@ import java.util.UUID;
 @EnableJpaAuditing(auditorAwareRef = "auditorProvider")
 public class AuditConfig {
 
-    /**
-     * Provides the current auditor (user) for JPA auditing.
-     * In Phase 1, we use a mock user ID. In later phases, this will be replaced
-     * with authentication-based user identification.
-     *
-     * @return AuditorAware implementation
-     */
     @Bean
     public AuditorAware<UUID> auditorProvider() {
-        // For Phase 1, use a constant mock user ID
-        // Later this will be integrated with authentication
-        return () -> Optional.of(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        return () -> {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+            if (authentication != null && authentication.isAuthenticated() &&
+                    authentication.getPrincipal() instanceof UserDetailsImpl) {
+                UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+                return Optional.of(userDetails.getId());
+            }
+
+            // Default user ID if no authenticated user is found
+            return Optional.of(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        };
     }
 }

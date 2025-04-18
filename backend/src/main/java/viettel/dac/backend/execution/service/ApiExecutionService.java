@@ -17,10 +17,10 @@ import viettel.dac.backend.execution.mapper.ApiExecutionResultMapper;
 import viettel.dac.backend.execution.repository.ApiExecutionResultRepository;
 import viettel.dac.backend.execution.repository.ExecutionResultRepository;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
 
 @Service
 @RequiredArgsConstructor
@@ -101,7 +101,6 @@ public class ApiExecutionService {
         return new PageImpl<>(dtos, pageable, results.size());
     }
 
-
     @Transactional(readOnly = true)
     public Page<ApiExecutionResultResponseDto> getApiExecutionResultsByResponseTime(long thresholdMs, Pageable pageable) {
         List<ApiExecutionResult> results = apiExecutionResultRepository.findByResponseTimeMsGreaterThan(thresholdMs);
@@ -116,5 +115,25 @@ public class ApiExecutionService {
                 .collect(Collectors.toList());
 
         return new PageImpl<>(dtos, pageable, results.size());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ApiExecutionResultResponseDto> getApiExecutionResultsByUserAndTemplate(UUID userId, UUID templateId, Pageable pageable) {
+        // Get execution results by user ID and optionally template ID
+        Page<ExecutionResult> executions;
+        if (templateId != null) {
+            executions = executionResultRepository.findByTemplateIdAndUserId(templateId, userId, pageable);
+        } else {
+            executions = executionResultRepository.findByUserId(userId, pageable);
+        }
+
+        // Map to API execution results
+        List<ApiExecutionResultResponseDto> dtos = new ArrayList<>();
+        for (ExecutionResult execution : executions.getContent()) {
+            apiExecutionResultRepository.findByIdWithExecutionResult(execution.getId())
+                    .ifPresent(apiExecution -> dtos.add(apiExecutionResultMapper.toResponseDto(apiExecution)));
+        }
+
+        return new PageImpl<>(dtos, pageable, executions.getTotalElements());
     }
 }

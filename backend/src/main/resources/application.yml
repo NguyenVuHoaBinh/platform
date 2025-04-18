@@ -99,3 +99,32 @@ tool-template:
     template-time-to-live: 300 # seconds
     execution-time-to-live: 300 # seconds
 
+  # Security Configuration
+  security:
+    jwt:
+      secret: ${JWT_SECRET:o8dYVR2KPDpSDJOqnO5Io3MjbZHUwl3nh7EjjBPkfj9QQwYdpoCVvyYhqYs4GdXH}
+      expiration: 86400000 # 24 hours in milliseconds
+      issuer: tool-template-system
+
+# Spring Security Configuration
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+  show-actuator: true
+  packages-to-scan: viettel.dac.backend
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  health:
+    redis:
+      enabled: true

@@ -3,30 +3,20 @@ package viettel.dac.backend.execution.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.annotations.Type;
 import org.hibernate.type.SqlTypes;
 
 import java.util.Map;
-import java.util.UUID;
-
 
 @Entity
-@Table(name = "api_execution_results")
+@Table(name = "api_executions")
+@DiscriminatorValue("API")
+@PrimaryKeyJoinColumn(name = "execution_id")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ApiExecutionResult {
-
-    @Id
-    @Column(name = "id")
-    private UUID id;
-
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id")
-    @MapsId
-    private ExecutionResult executionResult;
+public class ApiExecution extends BaseExecution {
 
     @Column(name = "status_code")
     private Integer statusCode;
@@ -44,4 +34,11 @@ public class ApiExecutionResult {
 
     @Column(name = "successful")
     private Boolean successful;
+
+    @PrePersist
+    public void prePersist() {
+        if (this.getExecutionType() == null) {
+            this.setExecutionType("API");
+        }
+    }
 }

@@ -1,31 +1,30 @@
 package viettel.dac.backend.template.entity;
 
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import viettel.dac.backend.template.enums.HttpMethod;
+import viettel.dac.backend.template.enums.TemplateType;
+
 
 import java.util.Map;
-import java.util.UUID;
 
 @Entity
-@Table(name = "api_tool_templates")
+@Table(name = "api_templates")
+@DiscriminatorValue("API")
+@PrimaryKeyJoinColumn(name = "template_id")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class ApiToolTemplate {
-
-    @Id
-    @Column(name = "id")
-    private UUID id;
-
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id")
-    @MapsId
-    private ToolTemplate toolTemplate;
+@SuperBuilder
+public class ApiTemplate extends BaseTemplate {
 
     @Column(name = "endpoint", nullable = false)
     private String endpoint;
@@ -54,4 +53,11 @@ public class ApiToolTemplate {
 
     @Column(name = "follow_redirects")
     private Boolean followRedirects = true;
+
+    @PrePersist
+    public void prePersist() {
+        if (this.getTemplateType() == null) {
+            this.setTemplateType(TemplateType.API);
+        }
+    }
 }

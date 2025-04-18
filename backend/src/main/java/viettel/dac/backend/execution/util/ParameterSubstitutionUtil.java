@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import viettel.dac.backend.execution.exception.ExecutionException;
+
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -26,6 +26,9 @@ public class ParameterSubstitutionUtil {
     // Pattern for parameter placeholders: ${paramName}
     private static final Pattern PARAMETER_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
 
+    /**
+     * Substitute parameters in a string using the ${param} syntax.
+     */
     public String substituteString(String template, Map<String, Object> parameters) {
         if (template == null || parameters == null || parameters.isEmpty()) {
             return template;
@@ -52,6 +55,9 @@ public class ParameterSubstitutionUtil {
         return result.toString();
     }
 
+    /**
+     * Substitute parameters in a map of strings.
+     */
     public Map<String, String> substituteMap(Map<String, String> templateMap, Map<String, Object> parameters) {
         if (templateMap == null || templateMap.isEmpty() || parameters == null || parameters.isEmpty()) {
             return templateMap;
@@ -68,6 +74,9 @@ public class ParameterSubstitutionUtil {
         return result;
     }
 
+    /**
+     * Substitute parameters in a JSON object or string.
+     */
     public Object substituteJson(Object jsonObject, Map<String, Object> parameters) {
         if (jsonObject == null || parameters == null || parameters.isEmpty()) {
             return jsonObject;
@@ -96,6 +105,9 @@ public class ParameterSubstitutionUtil {
         }
     }
 
+    /**
+     * Recursively substitute parameters in a JsonNode.
+     */
     private JsonNode substituteJsonNode(JsonNode node, Map<String, Object> parameters) {
         if (node.isObject()) {
             ObjectNode objectNode = (ObjectNode) node;

@@ -1,17 +1,12 @@
 package viettel.dac.backend.plugin.impl;
 
 import org.springframework.stereotype.Component;
+import viettel.dac.backend.execution.engine.ApiExecutionStrategy;
 import viettel.dac.backend.execution.engine.ExecutionStrategy;
-import viettel.dac.backend.execution.engine.impl.ApiExecutionStrategy;
 import viettel.dac.backend.plugin.ToolPlugin;
-import viettel.dac.backend.template.dto.ApiToolCreateDto;
 import viettel.dac.backend.template.dto.TemplateCreateDto;
-import viettel.dac.backend.template.entity.ApiToolTemplate;
-import viettel.dac.backend.template.entity.ToolTemplate;
 import viettel.dac.backend.template.enums.HttpMethod;
 import viettel.dac.backend.template.enums.TemplateType;
-import viettel.dac.backend.template.mapper.ApiToolMapper;
-import viettel.dac.backend.template.repository.ApiToolTemplateRepository;
 
 import java.util.HashSet;
 import java.util.List;

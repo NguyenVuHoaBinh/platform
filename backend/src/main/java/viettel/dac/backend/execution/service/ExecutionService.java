@@ -7,53 +7,56 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import viettel.dac.backend.common.exception.ResourceNotFoundException;
 import viettel.dac.backend.execution.dto.ExecutionRequestDto;
-import viettel.dac.backend.execution.dto.ExecutionResultResponseDto;
-import viettel.dac.backend.execution.engine.impl.ExecutionEngine;
-import viettel.dac.backend.execution.entity.ExecutionResult;
+import viettel.dac.backend.execution.dto.ExecutionResponseDto;
+import viettel.dac.backend.execution.dto.ExecutionSearchFilterDto;
+import viettel.dac.backend.execution.engine.ExecutionEngine;
+import viettel.dac.backend.execution.entity.BaseExecution;
 import viettel.dac.backend.execution.enums.ExecutionStatus;
 import viettel.dac.backend.execution.exception.ExecutionException;
 import viettel.dac.backend.execution.mapper.ExecutionMapper;
-import viettel.dac.backend.execution.repository.ExecutionResultRepository;
-import viettel.dac.backend.template.repository.ToolTemplateRepository;
+import viettel.dac.backend.execution.repository.ExecutionRepository;
+import viettel.dac.backend.execution.service.specification.ExecutionSpecifications;
+import viettel.dac.backend.template.repository.TemplateRepository;
+
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
-
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class ExecutionService {
 
-    private final ToolTemplateRepository toolTemplateRepository;
-    private final ExecutionResultRepository executionResultRepository;
+    private final TemplateRepository templateRepository;
+    private final ExecutionRepository executionRepository;
     private final ExecutionMapper executionMapper;
     private final ExecutionEngine executionEngine;
 
-    @Value("${tool-template.execution.default-timeout:60000}")
+    @Value("${execution.default-timeout:60000}")
     private int defaultTimeoutMs;
 
     @Transactional
-    public ExecutionResultResponseDto executeTemplate(ExecutionRequestDto requestDto, UUID userId) {
+    public ExecutionResponseDto executeTemplate(ExecutionRequestDto requestDto, UUID userId) {
         // Check if the template exists
         UUID templateId = requestDto.getTemplateId();
-        if (!toolTemplateRepository.existsById(templateId)) {
+        if (!templateRepository.existsById(templateId)) {
             throw new ResourceNotFoundException("Template not found with ID: " + templateId);
         }
 
         // Create an execution record
-        ExecutionResult execution = new ExecutionResult();
+        BaseExecution execution = new BaseExecution();
         execution.setTemplateId(templateId);
         execution.setUserId(userId);
         execution.setStatus(ExecutionStatus.PENDING);
 
         // Save the execution record
-        ExecutionResult savedExecution = executionResultRepository.save(execution);
+        BaseExecution savedExecution = executionRepository.save(execution);
 
         // Start the execution asynchronously
         executionEngine.execute(
@@ -65,55 +68,28 @@ public class ExecutionService {
         return executionMapper.toDto(savedExecution);
     }
 
-    /**
-     * Get the result of an execution.
-     *
-     * @param executionId The ID of the execution
-     * @return The execution result
-     * @throws ResourceNotFoundException If the execution is not found
-     */
     @Transactional(readOnly = true)
     @Cacheable(value = "executions", key = "#executionId")
-    public ExecutionResultResponseDto getExecutionResult(UUID executionId) {
-        ExecutionResult execution = executionResultRepository.findById(executionId)
+    public ExecutionResponseDto getExecutionResult(UUID executionId) {
+        BaseExecution execution = executionRepository.findById(executionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Execution not found with ID: " + executionId));
 
         return executionMapper.toDto(execution);
     }
 
-    /**
-     * Get all execution results with optional filtering.
-     *
-     * @param templateId Filter by template ID (optional)
-     * @param userId Filter by user ID (optional)
-     * @param status Filter by status (optional)
-     * @param pageable Pagination information
-     * @return A page of execution results
-     */
     @Transactional(readOnly = true)
-    public Page<ExecutionResultResponseDto> getAllExecutionResults(
-            UUID templateId,
-            UUID userId,
-            ExecutionStatus status,
-            Pageable pageable) {
+    public Page<ExecutionResponseDto> searchExecutions(ExecutionSearchFilterDto filter, Pageable pageable) {
+        Specification<BaseExecution> spec = buildSpecification(filter);
 
-        Page<ExecutionResult> executions;
-
-        if (templateId != null || userId != null || status != null) {
-            // Apply filters if provided
-            executions = executionResultRepository.findByFilters(templateId, userId, status, pageable);
-        } else {
-            // No filters, get all executions
-            executions = executionResultRepository.findAll(pageable);
-        }
+        Page<BaseExecution> executions = executionRepository.findAll(spec, pageable);
 
         return executions.map(executionMapper::toDto);
     }
 
     @Transactional
     @CacheEvict(value = "executions", key = "#executionId")
-    public ExecutionResultResponseDto cancelExecution(UUID executionId) {
-        ExecutionResult execution = executionResultRepository.findById(executionId)
+    public ExecutionResponseDto cancelExecution(UUID executionId) {
+        BaseExecution execution = executionRepository.findById(executionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Execution not found with ID: " + executionId));
 
         // Check if the execution can be cancelled
@@ -127,13 +103,13 @@ public class ExecutionService {
         if (cancelled) {
             // Mark as cancelled
             execution.markAsCancelled();
-            ExecutionResult updatedExecution = executionResultRepository.save(execution);
+            BaseExecution updatedExecution = executionRepository.save(execution);
             return executionMapper.toDto(updatedExecution);
         } else {
             // If cancellation failed but execution is still running, mark it as cancelled anyway
             if (execution.getStatus() == ExecutionStatus.RUNNING || execution.getStatus() == ExecutionStatus.PENDING) {
                 execution.markAsCancelled();
-                ExecutionResult updatedExecution = executionResultRepository.save(execution);
+                BaseExecution updatedExecution = executionRepository.save(execution);
                 return executionMapper.toDto(updatedExecution);
             }
             throw new ExecutionException("Failed to cancel execution with ID: " + executionId);
@@ -143,11 +119,11 @@ public class ExecutionService {
     @Transactional
     @CacheEvict(value = "executions", key = "#executionId")
     public void deleteExecutionResult(UUID executionId) {
-        if (!executionResultRepository.existsById(executionId)) {
+        if (!executionRepository.existsById(executionId)) {
             throw new ResourceNotFoundException("Execution not found with ID: " + executionId);
         }
 
-        executionResultRepository.deleteById(executionId);
+        executionRepository.deleteById(executionId);
     }
 
     @Transactional
@@ -155,14 +131,48 @@ public class ExecutionService {
         Instant cutoffDate = Instant.now().minus(retentionDays, ChronoUnit.DAYS);
 
         // Find executions to delete
-        var oldExecutions = executionResultRepository.findByEndTimeBefore(cutoffDate);
+        var oldExecutions = executionRepository.findByEndTimeBefore(cutoffDate);
         int count = oldExecutions.size();
 
         if (!oldExecutions.isEmpty()) {
-            executionResultRepository.deleteByEndTimeBefore(cutoffDate);
+            executionRepository.deleteByEndTimeBefore(cutoffDate);
             log.info("Deleted {} old execution results", count);
         }
 
         return count;
+    }
+
+    protected Specification<BaseExecution> buildSpecification(ExecutionSearchFilterDto filter) {
+        Specification<BaseExecution> spec = Specification.where(null);
+
+        if (filter.getTemplateId() != null) {
+            spec = spec.and(ExecutionSpecifications.hasTemplateId(filter.getTemplateId()));
+        }
+
+        if (filter.getUserId() != null) {
+            spec = spec.and(ExecutionSpecifications.hasUserId(filter.getUserId()));
+        }
+
+        if (filter.getStatus() != null) {
+            spec = spec.and(ExecutionSpecifications.hasStatus(filter.getStatus()));
+        }
+
+        if (filter.getStartTimeFrom() != null) {
+            spec = spec.and(ExecutionSpecifications.startTimeAfter(filter.getStartTimeFrom()));
+        }
+
+        if (filter.getStartTimeTo() != null) {
+            spec = spec.and(ExecutionSpecifications.startTimeBefore(filter.getStartTimeTo()));
+        }
+
+        if (filter.getEndTimeFrom() != null) {
+            spec = spec.and(ExecutionSpecifications.endTimeAfter(filter.getEndTimeFrom()));
+        }
+
+        if (filter.getEndTimeTo() != null) {
+            spec = spec.and(ExecutionSpecifications.endTimeBefore(filter.getEndTimeTo()));
+        }
+
+        return spec;
     }
 }

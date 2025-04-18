@@ -1,4 +1,4 @@
-package viettel.dac.backend.execution.engine.impl;
+package viettel.dac.backend.execution.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Getter;
@@ -8,24 +8,22 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
-
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
-import viettel.dac.backend.execution.exception.*;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
-import viettel.dac.backend.execution.engine.ExecutionStrategy;
-import viettel.dac.backend.execution.entity.ApiExecutionResult;
-import viettel.dac.backend.execution.entity.ExecutionResult;
+
+import viettel.dac.backend.execution.entity.ApiExecution;
+import viettel.dac.backend.execution.entity.BaseExecution;
 import viettel.dac.backend.execution.exception.ExecutionException;
+import viettel.dac.backend.execution.exception.InvalidParameterException;
 import viettel.dac.backend.execution.exception.TimeoutException;
-import viettel.dac.backend.execution.repository.ApiExecutionResultRepository;
+import viettel.dac.backend.execution.repository.ApiExecutionRepository;
 import viettel.dac.backend.execution.util.ParameterSubstitutionUtil;
-import viettel.dac.backend.template.entity.ApiToolTemplate;
-import viettel.dac.backend.template.entity.ToolTemplate;
-import viettel.dac.backend.template.enums.TemplateType;
-import viettel.dac.backend.template.repository.ApiToolTemplateRepository;
+import viettel.dac.backend.template.entity.ApiTemplate;
+import viettel.dac.backend.template.entity.BaseTemplate;
 import viettel.dac.backend.template.enums.HttpMethod;
+import viettel.dac.backend.template.enums.TemplateType;
 
 import java.net.URI;
 import java.time.Instant;
@@ -37,22 +35,16 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static org.springframework.http.HttpMethod.*;
 
-
-/**
- * Implementation of the ExecutionStrategy interface for executing API templates.
- */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class ApiExecutionStrategy implements ExecutionStrategy {
 
-    private final ApiToolTemplateRepository apiToolTemplateRepository;
-    private final ApiExecutionResultRepository apiExecutionResultRepository;
+    private final ApiExecutionRepository apiExecutionRepository;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final ParameterSubstitutionUtil parameterSubstitutionUtil;
 
-    // Map to track cancelled executions
     private final Map<UUID, Boolean> cancelledExecutions = new ConcurrentHashMap<>();
 
     @Override
@@ -61,15 +53,16 @@ public class ApiExecutionStrategy implements ExecutionStrategy {
     }
 
     @Override
-    public void validate(ToolTemplate template, Map<String, Object> parameters) throws ExecutionException {
-        // Check if this is an API template
-        if (template.getTemplateType() != TemplateType.API) {
+    public void validate(BaseTemplate template, Map<String, Object> parameters) throws ExecutionException {
+        if (template == null) {
+            throw new InvalidParameterException("Template cannot be null");
+        }
+
+        if (!(template instanceof ApiTemplate)) {
             throw new InvalidParameterException("Template is not an API template");
         }
 
-        // Get the API-specific template
-        ApiToolTemplate apiTemplate = apiToolTemplateRepository.findById(template.getId())
-                .orElseThrow(() -> new InvalidParameterException("API Template details not found for ID: " + template.getId()));
+        ApiTemplate apiTemplate = (ApiTemplate) template;
 
         // Validate endpoint
         if (apiTemplate.getEndpoint() == null || apiTemplate.getEndpoint().trim().isEmpty()) {
@@ -90,64 +83,116 @@ public class ApiExecutionStrategy implements ExecutionStrategy {
     }
 
     @Override
-    public ExecutionResult execute(ToolTemplate template, Map<String, Object> parameters, ExecutionResult execution)
-            throws ExecutionException {
-        try {
-            // Mark as running
-            execution.markAsRunning();
+    public BaseExecution execute(BaseTemplate template, Map<String, Object> parameters, BaseExecution execution) throws ExecutionException {
+        if (!(template instanceof ApiTemplate)) {
+            throw new InvalidParameterException("Template is not an API template");
+        }
 
-            // Check if the execution is already cancelled
-            if (cancelledExecutions.getOrDefault(execution.getId(), false)) {
-                execution.markAsCancelled();
-                cancelledExecutions.remove(execution.getId());
-                return execution;
+        try {
+            ApiTemplate apiTemplate = (ApiTemplate) template;
+
+            // Create or get ApiExecution instance
+            ApiExecution apiExecution;
+            if (execution instanceof ApiExecution) {
+                apiExecution = (ApiExecution) execution;
+            } else {
+                // If we have a base execution, create a new API execution with the same ID
+                apiExecution = new ApiExecution();
+                apiExecution.setId(execution.getId());
+                apiExecution.setTemplateId(execution.getTemplateId());
+                apiExecution.setUserId(execution.getUserId());
+                apiExecution.setStatus(execution.getStatus());
             }
 
-            // Get the API template
-            ApiToolTemplate apiTemplate = apiToolTemplateRepository.findById(template.getId())
-                    .orElseThrow(() -> new InvalidParameterException("API Template details not found for ID: " + template.getId()));
+            // Mark as running
+            apiExecution.markAsRunning();
+
+            // Check if the execution is already cancelled
+            if (cancelledExecutions.getOrDefault(apiExecution.getId(), false)) {
+                apiExecution.markAsCancelled();
+                cancelledExecutions.remove(apiExecution.getId());
+                return apiExecution;
+            }
 
             // Substitute parameters in the template
             ApiRequestContext requestContext = substituteParameters(apiTemplate, parameters);
 
             // Execute the HTTP request
-            ResponseEntity<String> response = executeHttpRequest(requestContext);
+            Instant startTime = Instant.now();
+            ResponseEntity<String> response;
+
+            try {
+                response = executeHttpRequest(requestContext);
+            } catch (TimeoutException e) {
+                apiExecution.markAsTimedOut();
+                return apiExecution;
+            }
+
+            // Calculate response time
+            long responseTimeMs = Instant.now().toEpochMilli() - startTime.toEpochMilli();
 
             // Check if the execution was cancelled during the request
-            if (cancelledExecutions.getOrDefault(execution.getId(), false)) {
-                execution.markAsCancelled();
-                cancelledExecutions.remove(execution.getId());
-                return execution;
+            if (cancelledExecutions.getOrDefault(apiExecution.getId(), false)) {
+                apiExecution.markAsCancelled();
+                cancelledExecutions.remove(apiExecution.getId());
+                return apiExecution;
             }
 
             // Process the response
-            ApiExecutionResult apiResult = processResponse(execution, response, requestContext.getStartTime());
+            int statusCode = response.getStatusCodeValue();
+            boolean successful = response.getStatusCode().is2xxSuccessful();
 
-            // Mark the execution as completed
+            // Extract response headers
+            Map<String, String> responseHeaders = new HashMap<>();
+            response.getHeaders().forEach((name, values) -> {
+                if (!values.isEmpty()) {
+                    responseHeaders.put(name, String.join(", ", values));
+                }
+            });
+
+            // Parse response body
+            Object responseBody = response.getBody();
+            if (responseBody != null && response.getHeaders().getContentType() != null &&
+                    response.getHeaders().getContentType().includes(MediaType.APPLICATION_JSON)) {
+                try {
+                    responseBody = objectMapper.readValue(response.getBody(), Object.class);
+                } catch (Exception e) {
+                    log.warn("Error parsing JSON response: {}", e.getMessage());
+                    // Keep response as string if parsing fails
+                }
+            }
+
+            // Update execution properties
+            apiExecution.setStatusCode(statusCode);
+            apiExecution.setResponseHeaders(responseHeaders);
+            apiExecution.setResponseBody(responseBody);
+            apiExecution.setResponseTimeMs(responseTimeMs);
+            apiExecution.setSuccessful(successful);
+
+            // Set metrics
+            Map<String, Object> metrics = new HashMap<>();
+            metrics.put("responseTimeMs", responseTimeMs);
+            metrics.put("statusCode", statusCode);
+            metrics.put("successful", successful);
+            apiExecution.setMetrics(metrics);
+
+            // Generate result object
             Map<String, Object> result = new HashMap<>();
-            result.put("statusCode", apiResult.getStatusCode());
-            result.put("responseTimeMs", apiResult.getResponseTimeMs());
-            result.put("successful", apiResult.getSuccessful());
-            execution.markAsCompleted(result);
-            execution.setMetrics(Map.of(
-                    "responseTimeMs", apiResult.getResponseTimeMs(),
-                    "statusCode", apiResult.getStatusCode()
-            ));
+            result.put("statusCode", statusCode);
+            result.put("successful", successful);
+            result.put("responseTimeMs", responseTimeMs);
 
-            return execution;
+            // Mark as completed
+            apiExecution.markAsCompleted(result);
 
-        } catch (TimeoutException e) {
-            // Handle timeout
-            log.error("Timeout executing API template: {}", e.getMessage());
-            execution.markAsTimedOut();
-            return execution;
+            // Save and return
+            return apiExecutionRepository.save(apiExecution);
 
         } catch (Exception e) {
             // Handle other exceptions
             log.error("Error executing API template: {}", e.getMessage(), e);
             execution.markAsFailed(e.getMessage());
             return execution;
-
         } finally {
             // Clean up
             cancelledExecutions.remove(execution.getId());
@@ -156,10 +201,9 @@ public class ApiExecutionStrategy implements ExecutionStrategy {
 
     @Override
     @Async("executionTaskExecutor")
-    public CompletableFuture<ExecutionResult> executeAsync(ToolTemplate template, Map<String, Object> parameters,
-                                                           ExecutionResult execution) {
+    public CompletableFuture<BaseExecution> executeAsync(BaseTemplate template, Map<String, Object> parameters, BaseExecution execution) {
         try {
-            ExecutionResult result = execute(template, parameters, execution);
+            BaseExecution result = execute(template, parameters, execution);
             return CompletableFuture.completedFuture(result);
         } catch (Exception e) {
             log.error("Error in async API execution: {}", e.getMessage(), e);
@@ -174,9 +218,8 @@ public class ApiExecutionStrategy implements ExecutionStrategy {
         return true;
     }
 
-    private ApiRequestContext substituteParameters(ApiToolTemplate apiTemplate, Map<String, Object> parameters) {
+    private ApiRequestContext substituteParameters(ApiTemplate apiTemplate, Map<String, Object> parameters) {
         ApiRequestContext context = new ApiRequestContext();
-        context.setStartTime(Instant.now());
 
         // Substitute in endpoint
         context.setEndpoint(parameterSubstitutionUtil.substituteString(apiTemplate.getEndpoint(), parameters));
@@ -224,7 +267,7 @@ public class ApiExecutionStrategy implements ExecutionStrategy {
         return context;
     }
 
-    private ResponseEntity<String> executeHttpRequest(ApiRequestContext context) throws ExecutionException {
+    private ResponseEntity<String> executeHttpRequest(ApiRequestContext context) throws ExecutionException, TimeoutException {
         try {
             // Build the URI with query parameters
             UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromUriString(context.getEndpoint());
@@ -272,43 +315,6 @@ public class ApiExecutionStrategy implements ExecutionStrategy {
         }
     }
 
-    private ApiExecutionResult processResponse(ExecutionResult execution, ResponseEntity<String> response, Instant startTime) {
-        // Calculate response time
-        long responseTimeMs = Instant.now().toEpochMilli() - startTime.toEpochMilli();
-
-        // Extract headers
-        Map<String, String> responseHeaders = new HashMap<>();
-        response.getHeaders().forEach((name, values) -> {
-            if (!values.isEmpty()) {
-                responseHeaders.put(name, String.join(", ", values));
-            }
-        });
-
-        // Parse response body if it's JSON
-        Object responseBody = response.getBody();
-        if (responseBody != null && response.getHeaders().getContentType() != null &&
-                response.getHeaders().getContentType().includes(MediaType.APPLICATION_JSON)) {
-            try {
-                responseBody = objectMapper.readValue(response.getBody(), Object.class);
-            } catch (Exception e) {
-                log.warn("Error parsing JSON response: {}", e.getMessage());
-                // Keep response as string if parsing fails
-            }
-        }
-
-        // Create and save API execution result
-        ApiExecutionResult apiResult = ApiExecutionResult.builder()
-                .executionResult(execution)
-                .statusCode(response.getStatusCodeValue())
-                .responseHeaders(responseHeaders)
-                .responseBody(responseBody)
-                .responseTimeMs(responseTimeMs)
-                .successful(response.getStatusCode().is2xxSuccessful())
-                .build();
-
-        return apiExecutionResultRepository.save(apiResult);
-    }
-
     private org.springframework.http.HttpMethod mapHttpMethod(HttpMethod method) {
         return switch (method) {
             case GET -> GET;
@@ -321,10 +327,9 @@ public class ApiExecutionStrategy implements ExecutionStrategy {
         };
     }
 
-    @Setter
     @Getter
+    @Setter
     private static class ApiRequestContext {
-        private Instant startTime;
         private String endpoint;
         private HttpMethod httpMethod;
         private Map<String, String> headers;
@@ -332,6 +337,5 @@ public class ApiExecutionStrategy implements ExecutionStrategy {
         private Object requestBody;
         private Integer timeout;
         private Boolean followRedirects;
-
     }
 }

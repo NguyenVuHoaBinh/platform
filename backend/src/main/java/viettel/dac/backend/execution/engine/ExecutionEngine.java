@@ -1,15 +1,14 @@
-package viettel.dac.backend.execution.engine.impl;
+package viettel.dac.backend.execution.engine;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import viettel.dac.backend.common.exception.ResourceNotFoundException;
-import viettel.dac.backend.execution.engine.ExecutionStrategy;
-import viettel.dac.backend.execution.entity.ExecutionResult;
-import viettel.dac.backend.execution.repository.ExecutionResultRepository;
+import viettel.dac.backend.execution.entity.BaseExecution;
+import viettel.dac.backend.execution.repository.ExecutionRepository;
 import viettel.dac.backend.plugin.PluginService;
-import viettel.dac.backend.template.entity.ToolTemplate;
-import viettel.dac.backend.template.repository.ToolTemplateRepository;
+import viettel.dac.backend.template.entity.BaseTemplate;
+import viettel.dac.backend.template.repository.TemplateRepository;
 
 import java.util.Map;
 import java.util.UUID;
@@ -19,30 +18,30 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 public class ExecutionEngine {
 
-    private final ToolTemplateRepository toolTemplateRepository;
-    private final ExecutionResultRepository executionResultRepository;
+    private final TemplateRepository templateRepository;
+    private final ExecutionRepository executionRepository;
     private final PluginService pluginService;
 
     @Autowired
     public ExecutionEngine(
-            ToolTemplateRepository toolTemplateRepository,
-            ExecutionResultRepository executionResultRepository,
+            TemplateRepository templateRepository,
+            ExecutionRepository executionRepository,
             PluginService pluginService) {
-        this.toolTemplateRepository = toolTemplateRepository;
-        this.executionResultRepository = executionResultRepository;
+        this.templateRepository = templateRepository;
+        this.executionRepository = executionRepository;
         this.pluginService = pluginService;
     }
 
     /**
      * Execute a template with the given parameters.
      */
-    public CompletableFuture<ExecutionResult> execute(UUID executionId, UUID templateId, Map<String, Object> parameters) {
+    public CompletableFuture<BaseExecution> execute(UUID executionId, UUID templateId, Map<String, Object> parameters) {
         // Get the template
-        ToolTemplate template = toolTemplateRepository.findByIdAndActiveTrue(templateId)
+        BaseTemplate template = templateRepository.findById(templateId)
                 .orElseThrow(() -> new ResourceNotFoundException("Template not found with ID: " + templateId));
 
         // Get the execution record
-        ExecutionResult execution = executionResultRepository.findById(executionId)
+        BaseExecution execution = executionRepository.findById(executionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Execution not found with ID: " + executionId));
 
         // Get the appropriate execution strategy for the template type through plugin system
@@ -53,11 +52,11 @@ public class ExecutionEngine {
 
         // Execute the template asynchronously
         return strategy.executeAsync(template, parameters, execution)
-                .thenApply(executionResultRepository::save)
+                .thenApply(executionRepository::save)
                 .exceptionally(ex -> {
                     log.error("Error during execution: {}", ex.getMessage(), ex);
                     execution.markAsFailed(ex.getMessage());
-                    return executionResultRepository.save(execution);
+                    return executionRepository.save(execution);
                 });
     }
 
@@ -66,7 +65,7 @@ public class ExecutionEngine {
      */
     public boolean cancelExecution(UUID executionId) {
         // Get the execution record
-        ExecutionResult execution = executionResultRepository.findById(executionId)
+        BaseExecution execution = executionRepository.findById(executionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Execution not found with ID: " + executionId));
 
         // Try all registered plugin strategies to cancel the execution

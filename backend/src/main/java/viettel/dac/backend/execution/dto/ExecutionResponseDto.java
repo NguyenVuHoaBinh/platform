@@ -11,8 +11,6 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ApiExecutionSearchFilterDto extends ExecutionSearchFilterDto {
-    private Integer statusCode;
-    private Boolean successful;
-    private Long maxResponseTimeMs;
+public class ExecutionResponseDto extends BaseExecutionDto {
+    private Object result;
 }

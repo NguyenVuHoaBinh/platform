@@ -1,31 +1,28 @@
 package viettel.dac.backend.execution.mapper;
 
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-import org.mapstruct.Named;
-import org.mapstruct.ReportingPolicy;
+import org.mapstruct.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import viettel.dac.backend.execution.dto.ExecutionResultResponseDto;
-import viettel.dac.backend.execution.entity.ExecutionResult;
-import viettel.dac.backend.template.repository.ToolTemplateRepository;
+import viettel.dac.backend.execution.dto.ExecutionResponseDto;
+import viettel.dac.backend.execution.entity.BaseExecution;
+import viettel.dac.backend.template.repository.TemplateRepository;
+
 
 import java.util.UUID;
 
-
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
+@Mapper(componentModel = "spring",
+        unmappedTargetPolicy = ReportingPolicy.IGNORE,
+        nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
 public abstract class ExecutionMapper {
 
     @Autowired
-    protected ToolTemplateRepository toolTemplateRepository;
+    protected TemplateRepository templateRepository;
 
-    @Mapping(target = "templateId", source = "templateId")
-    @Mapping(target = "templateName", expression = "java(getTemplateName(executionResult.getTemplateId()))")
-    @Mapping(target = "durationMs", expression = "java(executionResult.getDurationMs())")
-    public abstract ExecutionResultResponseDto toDto(ExecutionResult executionResult);
+    @Mapping(target = "templateName", expression = "java(getTemplateName(execution.getTemplateId()))")
+    @Mapping(target = "durationMs", expression = "java(execution.getDurationMs())")
+    public abstract ExecutionResponseDto toDto(BaseExecution execution);
 
-    @Named("getTemplateName")
     protected String getTemplateName(UUID templateId) {
-        return toolTemplateRepository.findById(templateId)
+        return templateRepository.findById(templateId)
                 .map(template -> template.getName())
                 .orElse(null);
     }

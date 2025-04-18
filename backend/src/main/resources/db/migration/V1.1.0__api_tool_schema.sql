@@ -1,31 +1,37 @@
--- V1.1.0__api_tool_schema.sql
--- Schema for API Tool entities
+-- Refactored schema for templates using inheritance
 
--- API Tool Templates table (specialization of Tool Templates)
-CREATE TABLE api_tool_templates (
-                                    id UUID PRIMARY KEY REFERENCES tool_templates(id) ON DELETE CASCADE,
-                                    endpoint VARCHAR(1000) NOT NULL,
-                                    http_method VARCHAR(10) NOT NULL,
-                                    headers JSONB,
-                                    query_params JSONB,
-                                    request_body JSONB,
-                                    content_type VARCHAR(100),
-                                    timeout INTEGER,
-                                    follow_redirects BOOLEAN DEFAULT TRUE
+-- Rename existing tool_templates table to templates
+ALTER TABLE tool_templates RENAME TO templates;
+
+-- Create API templates table
+CREATE TABLE api_templates (
+                               template_id UUID PRIMARY KEY REFERENCES templates(id) ON DELETE CASCADE,
+                               endpoint VARCHAR(1000) NOT NULL,
+                               http_method VARCHAR(10) NOT NULL,
+                               headers JSONB,
+                               query_params JSONB,
+                               request_body JSONB,
+                               content_type VARCHAR(100),
+                               timeout INTEGER,
+                               follow_redirects BOOLEAN DEFAULT TRUE
 );
 
--- API Execution Results table (specialization of Execution Results)
-CREATE TABLE api_execution_results (
-                                       id UUID PRIMARY KEY REFERENCES execution_results(id) ON DELETE CASCADE,
-                                       status_code INTEGER,
-                                       response_headers JSONB,
-                                       response_body JSONB,
-                                       response_time_ms BIGINT,
-                                       successful BOOLEAN
-);
+-- Create indexes for improved query performance
+CREATE INDEX idx_templates_name ON templates(name);
+CREATE INDEX idx_templates_type ON templates(template_type);
+CREATE INDEX idx_templates_created_by ON templates(created_by);
+CREATE INDEX idx_templates_active ON templates(active);
+CREATE INDEX idx_api_templates_http_method ON api_templates(http_method);
+CREATE INDEX idx_api_templates_endpoint ON api_templates(endpoint);
 
--- Create indexes for better query performance
-CREATE INDEX idx_api_tool_templates_endpoint ON api_tool_templates(endpoint);
-CREATE INDEX idx_api_tool_templates_http_method ON api_tool_templates(http_method);
-CREATE INDEX idx_api_execution_results_status_code ON api_execution_results(status_code);
-CREATE INDEX idx_api_execution_results_successful ON api_execution_results(successful);
+-- Update template_tags foreign key
+ALTER TABLE template_tags
+DROP CONSTRAINT template_tags_template_id_fkey,
+    ADD CONSTRAINT template_tags_template_id_fkey
+    FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE;
+
+-- Update template_versions foreign key
+ALTER TABLE template_versions
+DROP CONSTRAINT template_versions_template_id_fkey,
+    ADD CONSTRAINT template_versions_template_id_fkey
+    FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE;

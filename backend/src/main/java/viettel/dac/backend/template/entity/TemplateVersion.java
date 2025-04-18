@@ -1,17 +1,19 @@
 package viettel.dac.backend.template.entity;
 
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import viettel.dac.backend.template.entity.BaseTemplate;
 
 import java.time.Instant;
 import java.util.UUID;
 
-/**
- * Entity representing a specific version of a tool template.
- * This allows for version tracking and history of template changes.
- */
 @Entity
 @Table(name = "template_versions", uniqueConstraints = {
         @UniqueConstraint(columnNames = {"template_id", "version"})
@@ -29,7 +31,7 @@ public class TemplateVersion {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "template_id", nullable = false)
-    private ToolTemplate template;
+    private BaseTemplate template;
 
     @Column(name = "version", nullable = false)
     private String version;

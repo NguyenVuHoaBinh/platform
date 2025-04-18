@@ -2,22 +2,24 @@ package viettel.dac.backend.execution.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import viettel.dac.backend.common.exception.ResourceNotFoundException;
-import viettel.dac.backend.execution.dto.ApiExecutionResultResponseDto;
+import viettel.dac.backend.execution.dto.ApiExecutionResponseDto;
+import viettel.dac.backend.execution.dto.ApiExecutionSearchFilterDto;
 import viettel.dac.backend.execution.dto.ExecutionRequestDto;
-import viettel.dac.backend.execution.entity.ApiExecutionResult;
-import viettel.dac.backend.execution.entity.ExecutionResult;
-import viettel.dac.backend.execution.mapper.ApiExecutionResultMapper;
-import viettel.dac.backend.execution.repository.ApiExecutionResultRepository;
-import viettel.dac.backend.execution.repository.ExecutionResultRepository;
+import viettel.dac.backend.execution.entity.ApiExecution;
+import viettel.dac.backend.execution.mapper.ApiExecutionMapper;
+import viettel.dac.backend.execution.repository.ApiExecutionRepository;
+import viettel.dac.backend.execution.service.specification.ApiExecutionSpecifications;
 
-import java.util.ArrayList;
+
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -28,112 +30,130 @@ import java.util.stream.Collectors;
 public class ApiExecutionService {
 
     private final ExecutionService executionService;
-    private final ApiExecutionResultRepository apiExecutionResultRepository;
-    private final ExecutionResultRepository executionResultRepository;
-    private final ApiExecutionResultMapper apiExecutionResultMapper;
+    private final ApiExecutionRepository apiExecutionRepository;
+    private final ApiExecutionMapper apiExecutionMapper;
 
     @Transactional
-    public ApiExecutionResultResponseDto executeApiTemplate(ExecutionRequestDto requestDto, UUID userId) {
-        // Use the base execution service to execute the template
-        ExecutionResult executionResult = executionResultRepository.findById(
-                        executionService.executeTemplate(requestDto, userId).getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Execution not found"));
+    public ApiExecutionResponseDto executeApiTemplate(ExecutionRequestDto requestDto, UUID userId) {
+        // Use the base execution service to start execution
+        executionService.executeTemplate(requestDto, userId);
 
-        // Initially, return the pending execution
-        // The API-specific result will be created by the API execution strategy during processing
-        ApiExecutionResult pendingResult = ApiExecutionResult.builder()
-                .executionResult(executionResult)
-                .successful(false)
-                .build();
+        // Find the execution (it should be in PENDING state now)
+        ApiExecution execution = apiExecutionRepository.findById(requestDto.getTemplateId())
+                .orElseThrow(() -> new ResourceNotFoundException("API Execution not found"));
 
-        return apiExecutionResultMapper.toResponseDto(pendingResult);
+        // Return the pending execution information
+        return apiExecutionMapper.toDto(execution);
     }
 
     @Transactional(readOnly = true)
     @Cacheable(value = "apiExecutions", key = "#executionId")
-    public ApiExecutionResultResponseDto getApiExecutionResult(UUID executionId) {
-        ApiExecutionResult apiExecutionResult = apiExecutionResultRepository.findByIdWithExecutionResult(executionId)
+    public ApiExecutionResponseDto getApiExecutionResult(UUID executionId) {
+        ApiExecution apiExecution = apiExecutionRepository.findById(executionId)
                 .orElseThrow(() -> new ResourceNotFoundException("API Execution not found with ID: " + executionId));
 
-        return apiExecutionResultMapper.toResponseDto(apiExecutionResult);
+        return apiExecutionMapper.toDto(apiExecution);
     }
 
     @Transactional(readOnly = true)
-    public Page<ApiExecutionResultResponseDto> getApiExecutionResultsByTemplate(UUID templateId, Pageable pageable) {
-        Page<ApiExecutionResult> results = apiExecutionResultRepository.findByTemplateId(templateId, pageable);
+    public Page<ApiExecutionResponseDto> searchApiExecutions(ApiExecutionSearchFilterDto filter, Pageable pageable) {
+        // Build base specification
+        Specification<ApiExecution> spec = buildSpecification(filter);
 
-        List<ApiExecutionResultResponseDto> dtos = results.getContent().stream()
-                .map(apiExecutionResultMapper::toResponseDto)
-                .collect(Collectors.toList());
-
-        return new PageImpl<>(dtos, pageable, results.getTotalElements());
-    }
-
-    @Transactional(readOnly = true)
-    public Page<ApiExecutionResultResponseDto> getApiExecutionResultsBySuccess(boolean successful, Pageable pageable) {
-        List<ApiExecutionResult> results = apiExecutionResultRepository.findBySuccessful(successful);
-
-        // Get a sublist based on pagination
-        int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), results.size());
-        List<ApiExecutionResult> pagedList = results.subList(start, end);
-
-        List<ApiExecutionResultResponseDto> dtos = pagedList.stream()
-                .map(apiExecutionResultMapper::toResponseDto)
-                .collect(Collectors.toList());
-
-        return new PageImpl<>(dtos, pageable, results.size());
-    }
-
-    @Transactional(readOnly = true)
-    public Page<ApiExecutionResultResponseDto> getApiExecutionResultsByStatusCode(int statusCode, Pageable pageable) {
-        List<ApiExecutionResult> results = apiExecutionResultRepository.findByStatusCode(statusCode);
-
-        // Get a sublist based on pagination
-        int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), results.size());
-        List<ApiExecutionResult> pagedList = results.subList(start, end);
-
-        List<ApiExecutionResultResponseDto> dtos = pagedList.stream()
-                .map(apiExecutionResultMapper::toResponseDto)
-                .collect(Collectors.toList());
-
-        return new PageImpl<>(dtos, pageable, results.size());
-    }
-
-    @Transactional(readOnly = true)
-    public Page<ApiExecutionResultResponseDto> getApiExecutionResultsByResponseTime(long thresholdMs, Pageable pageable) {
-        List<ApiExecutionResult> results = apiExecutionResultRepository.findByResponseTimeMsGreaterThan(thresholdMs);
-
-        // Get a sublist based on pagination
-        int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), results.size());
-        List<ApiExecutionResult> pagedList = results.subList(start, end);
-
-        List<ApiExecutionResultResponseDto> dtos = pagedList.stream()
-                .map(apiExecutionResultMapper::toResponseDto)
-                .collect(Collectors.toList());
-
-        return new PageImpl<>(dtos, pageable, results.size());
-    }
-
-    @Transactional(readOnly = true)
-    public Page<ApiExecutionResultResponseDto> getApiExecutionResultsByUserAndTemplate(UUID userId, UUID templateId, Pageable pageable) {
-        // Get execution results by user ID and optionally template ID
-        Page<ExecutionResult> executions;
-        if (templateId != null) {
-            executions = executionResultRepository.findByTemplateIdAndUserId(templateId, userId, pageable);
-        } else {
-            executions = executionResultRepository.findByUserId(userId, pageable);
+        // Add API-specific filters
+        if (filter.getStatusCode() != null) {
+            spec = spec.and(ApiExecutionSpecifications.hasStatusCode(filter.getStatusCode()));
         }
 
-        // Map to API execution results
-        List<ApiExecutionResultResponseDto> dtos = new ArrayList<>();
-        for (ExecutionResult execution : executions.getContent()) {
-            apiExecutionResultRepository.findByIdWithExecutionResult(execution.getId())
-                    .ifPresent(apiExecution -> dtos.add(apiExecutionResultMapper.toResponseDto(apiExecution)));
+        if (filter.getSuccessful() != null) {
+            spec = spec.and(ApiExecutionSpecifications.isSuccessful(filter.getSuccessful()));
         }
 
-        return new PageImpl<>(dtos, pageable, executions.getTotalElements());
+        if (filter.getMaxResponseTimeMs() != null) {
+            spec = spec.and(ApiExecutionSpecifications.responseTimeLessThan(filter.getMaxResponseTimeMs()));
+        }
+
+        Page<ApiExecution> executions = apiExecutionRepository.findAll(spec, pageable);
+
+        return executions.map(apiExecutionMapper::toDto);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ApiExecutionResponseDto> getApiExecutionsByStatusCode(int statusCode, Pageable pageable) {
+        List<ApiExecution> results = apiExecutionRepository.findByStatusCode(statusCode);
+
+        // Apply pagination manually
+        int start = (int) pageable.getOffset();
+        int end = Math.min((start + pageable.getPageSize()), results.size());
+        List<ApiExecution> pagedList = results.subList(start, end);
+
+        // Map to DTOs
+        List<ApiExecutionResponseDto> dtos = pagedList.stream()
+                .map(apiExecutionMapper::toDto)
+                .collect(Collectors.toList());
+
+        return new PageImpl<>(dtos, pageable, results.size());
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ApiExecutionResponseDto> getApiExecutionsBySuccessful(boolean successful, Pageable pageable) {
+        List<ApiExecution> results = apiExecutionRepository.findBySuccessful(successful);
+
+        // Apply pagination manually
+        int start = (int) pageable.getOffset();
+        int end = Math.min((start + pageable.getPageSize()), results.size());
+        List<ApiExecution> pagedList = results.subList(start, end);
+
+        // Map to DTOs
+        List<ApiExecutionResponseDto> dtos = pagedList.stream()
+                .map(apiExecutionMapper::toDto)
+                .collect(Collectors.toList());
+
+        return new PageImpl<>(dtos, pageable, results.size());
+    }
+
+    @Transactional
+    @CacheEvict(value = "apiExecutions", key = "#executionId")
+    public void deleteApiExecution(UUID executionId) {
+        if (!apiExecutionRepository.existsById(executionId)) {
+            throw new ResourceNotFoundException("API Execution not found with ID: " + executionId);
+        }
+
+        apiExecutionRepository.deleteById(executionId);
+    }
+
+    protected Specification<ApiExecution> buildSpecification(ApiExecutionSearchFilterDto filter) {
+        Specification<ApiExecution> spec = Specification.where(null);
+
+        // Apply base execution filters
+        if (filter.getTemplateId() != null) {
+            spec = spec.and(ApiExecutionSpecifications.hasTemplateId(filter.getTemplateId()));
+        }
+
+        if (filter.getUserId() != null) {
+            spec = spec.and(ApiExecutionSpecifications.hasUserId(filter.getUserId()));
+        }
+
+        if (filter.getStatus() != null) {
+            spec = spec.and(ApiExecutionSpecifications.hasStatus(filter.getStatus()));
+        }
+
+        if (filter.getStartTimeFrom() != null) {
+            spec = spec.and(ApiExecutionSpecifications.startTimeAfter(filter.getStartTimeFrom()));
+        }
+
+        if (filter.getStartTimeTo() != null) {
+            spec = spec.and(ApiExecutionSpecifications.startTimeBefore(filter.getStartTimeTo()));
+        }
+
+        if (filter.getEndTimeFrom() != null) {
+            spec = spec.and(ApiExecutionSpecifications.endTimeAfter(filter.getEndTimeFrom()));
+        }
+
+        if (filter.getEndTimeTo() != null) {
+            spec = spec.and(ApiExecutionSpecifications.endTimeBefore(filter.getEndTimeTo()));
+        }
+
+        return spec;
     }
 }

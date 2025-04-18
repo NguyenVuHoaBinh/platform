@@ -5,6 +5,5 @@ public enum TemplateType {
     DATABASE,
     FILE,
     INTEGRATION,
-    CUSTOM;
+    CUSTOM
 }
-

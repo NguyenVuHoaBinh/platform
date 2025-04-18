@@ -6,19 +6,16 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import viettel.dac.backend.execution.repository.ExecutionResultRepository;
+import viettel.dac.backend.execution.repository.ExecutionRepository;
 import viettel.dac.backend.security.enums.RoleType;
 
 import java.util.UUID;
 
-/**
- * Service for execution security-related operations.
- */
 @Service
 @RequiredArgsConstructor
 public class ExecutionSecurityService {
 
-    private final ExecutionResultRepository executionResultRepository;
+    private final ExecutionRepository executionRepository;
 
     @Transactional(readOnly = true)
     public boolean canAccessExecution(UUID executionId, UUID userId) {
@@ -28,10 +25,20 @@ public class ExecutionSecurityService {
         }
 
         // Check if the user is the owner of the execution
-        return executionResultRepository.findById(executionId)
+        return executionRepository.findById(executionId)
                 .map(execution -> execution.getUserId() != null &&
                         execution.getUserId().equals(userId))
                 .orElse(false);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canCancelExecution(UUID executionId, UUID userId) {
+        return canAccessExecution(executionId, userId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean canDeleteExecution(UUID executionId, UUID userId) {
+        return hasAdminRole() || canAccessExecution(executionId, userId);
     }
 
     private boolean hasAdminRole() {

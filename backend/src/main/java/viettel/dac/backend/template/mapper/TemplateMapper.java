@@ -4,71 +4,65 @@ import org.mapstruct.*;
 import viettel.dac.backend.template.dto.TemplateCreateDto;
 import viettel.dac.backend.template.dto.TemplateResponseDto;
 import viettel.dac.backend.template.dto.TemplateUpdateDto;
+import viettel.dac.backend.template.entity.BaseTemplate;
 import viettel.dac.backend.template.entity.TemplateTag;
-import viettel.dac.backend.template.entity.ToolTemplate;
+
 
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface TemplateMapper {
+@Mapper(componentModel = "spring",
+        unmappedTargetPolicy = ReportingPolicy.IGNORE,
+        nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+public abstract class TemplateMapper {
 
     @Mapping(target = "tags", source = "tags", qualifiedByName = "tagsToStringSet")
-    TemplateResponseDto toDto(ToolTemplate template);
+    public abstract TemplateResponseDto toDto(BaseTemplate template);
 
-    /**
-     * Convert DTO to entity.
-     * Note that we use a default implementation rather than letting MapStruct generate
-     * this to avoid issues with the inherited fields from BaseEntity.
-     */
-    default ToolTemplate toEntity(TemplateCreateDto dto) {
-        if (dto == null) {
-            return null;
-        }
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "active", constant = "true")
+    @Mapping(target = "tags", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "createdBy", ignore = true)
+    @Mapping(target = "lastModifiedAt", ignore = true)
+    @Mapping(target = "lastModifiedBy", ignore = true)
+    public abstract BaseTemplate toEntity(TemplateCreateDto dto);
 
-        ToolTemplate template = new ToolTemplate();
-        template.setName(dto.getName());
-        template.setDescription(dto.getDescription());
-        template.setVersion(dto.getVersion() != null ? dto.getVersion() : "1.0.0");
-        template.setTemplateType(dto.getTemplateType());
-        template.setProperties(dto.getProperties());
-        template.setActive(true);
-
-        return template;
-    }
-
-    /**
-     * Update entity from DTO
-     */
-    default void updateEntityFromDto(TemplateUpdateDto dto, @MappingTarget ToolTemplate template) {
-        if (dto == null) {
-            return;
-        }
-
-        if (dto.getName() != null) {
-            template.setName(dto.getName());
-        }
-        if (dto.getDescription() != null) {
-            template.setDescription(dto.getDescription());
-        }
-        if (dto.getVersion() != null) {
-            template.setVersion(dto.getVersion());
-        }
-        if (dto.getProperties() != null) {
-            template.setProperties(dto.getProperties());
-        }
-        if (dto.getActive() != null) {
-            template.setActive(dto.getActive());
-        }
-    }
+    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "tags", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "createdBy", ignore = true)
+    @Mapping(target = "lastModifiedAt", ignore = true)
+    @Mapping(target = "lastModifiedBy", ignore = true)
+    public abstract void updateEntityFromDto(TemplateUpdateDto dto, @MappingTarget BaseTemplate template);
 
     @Named("tagsToStringSet")
-    default Set<String> tagsToStringSet(Set<TemplateTag> tags) {
+    public Set<String> tagsToStringSet(Set<TemplateTag> tags) {
         if (tags == null) {
             return Set.of();
         }
         return tags.stream()
                 .map(TemplateTag::getTagName)
                 .collect(Collectors.toSet());
+    }
+
+    public void updateTemplateTags(BaseTemplate template, Set<String> newTags) {
+        if (newTags == null) {
+            return;
+        }
+
+        // Get current tag names
+        Set<String> currentTags = template.getTags().stream()
+                .map(TemplateTag::getTagName)
+                .collect(Collectors.toSet());
+
+        // Remove tags that are no longer in the new set
+        template.getTags().removeIf(tag -> !newTags.contains(tag.getTagName()));
+
+        // Add new tags
+        newTags.stream()
+                .filter(tag -> !currentTags.contains(tag))
+                .forEach(template::addTag);
     }
 }

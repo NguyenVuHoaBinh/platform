@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -14,35 +15,38 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import viettel.dac.backend.security.model.UserDetailsImpl;
-import viettel.dac.backend.template.dto.ApiToolCreateDto;
-import viettel.dac.backend.template.dto.ApiToolResponseDto;
-import viettel.dac.backend.template.dto.ApiToolUpdateDto;
+import viettel.dac.backend.template.dto.ApiTemplateCreateDto;
+import viettel.dac.backend.template.dto.ApiTemplateResponseDto;
+import viettel.dac.backend.template.dto.ApiTemplateUpdateDto;
 import viettel.dac.backend.template.enums.HttpMethod;
-import viettel.dac.backend.template.service.ApiToolService;
+import viettel.dac.backend.template.service.ApiTemplateService;
+
 
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/v1/api-templates")
+@RequestMapping("/api/v1/api-templates")
 @RequiredArgsConstructor
 @Tag(name = "API Templates", description = "API for managing API tool templates")
 @SecurityRequirement(name = "bearer-jwt")
-public class ApiToolController {
+public class ApiTemplateController {
 
-    private final ApiToolService apiToolService;
+    private final ApiTemplateService apiTemplateService;
 
     @PostMapping
     @Operation(
-            summary = "Create a new API tool template",
-            description = "Creates a new API tool template with the provided data (requires MANAGER or ADMIN role)"
+            summary = "Create a new API template",
+            description = "Creates a new API template with the provided data"
     )
     @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")
-    public ResponseEntity<ApiToolResponseDto> createApiTemplate(
+    public ResponseEntity<ApiTemplateResponseDto> createApiTemplate(
             @Parameter(description = "API template data", required = true)
-            @Valid @RequestBody ApiToolCreateDto createDto,
+            @Valid @RequestBody ApiTemplateCreateDto createDto,
+
             @AuthenticationPrincipal UserDetailsImpl userDetails) {
 
-        ApiToolResponseDto createdTemplate = apiToolService.createApiTemplate(createDto, userDetails.getId());
+        ApiTemplateResponseDto createdTemplate = apiTemplateService.createApiTemplate(
+                createDto, userDetails.getId());
         return ResponseEntity.status(HttpStatus.CREATED).body(createdTemplate);
     }
 
@@ -52,28 +56,31 @@ public class ApiToolController {
             description = "Retrieves a specific API template by its ID"
     )
     @PreAuthorize("hasAnyRole('USER', 'MANAGER', 'ADMIN')")
-    public ResponseEntity<ApiToolResponseDto> getApiTemplateById(
+    public ResponseEntity<ApiTemplateResponseDto> getApiTemplateById(
             @Parameter(description = "API Template ID", required = true)
             @PathVariable UUID id) {
 
-        ApiToolResponseDto template = apiToolService.getApiTemplateById(id);
+        ApiTemplateResponseDto template = apiTemplateService.getApiTemplateById(id);
         return ResponseEntity.ok(template);
     }
 
     @PutMapping("/{id}")
     @Operation(
             summary = "Update an API template",
-            description = "Updates an existing API template with the provided data (requires MANAGER or ADMIN role, or be the creator)"
+            description = "Updates an existing API template with the provided data"
     )
     @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN') or @templateSecurityService.isTemplateCreator(#id, authentication.principal.id)")
-    public ResponseEntity<ApiToolResponseDto> updateApiTemplate(
+    public ResponseEntity<ApiTemplateResponseDto> updateApiTemplate(
             @Parameter(description = "API Template ID", required = true)
             @PathVariable UUID id,
+
             @Parameter(description = "Updated API template data", required = true)
-            @Valid @RequestBody ApiToolUpdateDto updateDto,
+            @Valid @RequestBody ApiTemplateUpdateDto updateDto,
+
             @AuthenticationPrincipal UserDetailsImpl userDetails) {
 
-        ApiToolResponseDto updatedTemplate = apiToolService.updateApiTemplate(id, updateDto, userDetails.getId());
+        ApiTemplateResponseDto updatedTemplate = apiTemplateService.updateApiTemplate(
+                id, updateDto, userDetails.getId());
         return ResponseEntity.ok(updatedTemplate);
     }
 
@@ -83,12 +90,14 @@ public class ApiToolController {
             description = "Retrieves API templates filtered by HTTP method"
     )
     @PreAuthorize("hasAnyRole('USER', 'MANAGER', 'ADMIN')")
-    public ResponseEntity<Page<ApiToolResponseDto>> getApiTemplatesByHttpMethod(
+    public ResponseEntity<Page<ApiTemplateResponseDto>> getApiTemplatesByHttpMethod(
             @Parameter(description = "HTTP Method", required = true)
             @PathVariable HttpMethod method,
+
             Pageable pageable) {
 
-        Page<ApiToolResponseDto> templates = apiToolService.getApiTemplatesByHttpMethod(method, pageable);
+        Page<ApiTemplateResponseDto> templates = apiTemplateService.getApiTemplatesByHttpMethod(
+                method, pageable);
         return ResponseEntity.ok(templates);
     }
 
@@ -98,12 +107,14 @@ public class ApiToolController {
             description = "Retrieves API templates filtered by domain in the endpoint"
     )
     @PreAuthorize("hasAnyRole('USER', 'MANAGER', 'ADMIN')")
-    public ResponseEntity<Page<ApiToolResponseDto>> getApiTemplatesByDomain(
+    public ResponseEntity<Page<ApiTemplateResponseDto>> getApiTemplatesByDomain(
             @Parameter(description = "Domain", required = true)
             @RequestParam String domain,
+
             Pageable pageable) {
 
-        Page<ApiToolResponseDto> templates = apiToolService.getApiTemplatesByDomain(domain, pageable);
+        Page<ApiTemplateResponseDto> templates = apiTemplateService.getApiTemplatesByDomain(
+                domain, pageable);
         return ResponseEntity.ok(templates);
     }
 }

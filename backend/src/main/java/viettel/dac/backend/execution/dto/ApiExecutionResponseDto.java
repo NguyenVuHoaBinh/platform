@@ -6,13 +6,17 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
+import java.util.Map;
+
 @Data
 @EqualsAndHashCode(callSuper = true)
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ApiExecutionSearchFilterDto extends ExecutionSearchFilterDto {
+public class ApiExecutionResponseDto extends BaseExecutionDto {
     private Integer statusCode;
+    private Map<String, String> responseHeaders;
+    private Object responseBody;
+    private Long responseTimeMs;
     private Boolean successful;
-    private Long maxResponseTimeMs;
 }

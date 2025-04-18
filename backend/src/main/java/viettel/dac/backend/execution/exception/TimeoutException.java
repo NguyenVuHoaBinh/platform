@@ -1,6 +1,7 @@
 package viettel.dac.backend.execution.exception;
 
 public class TimeoutException extends ExecutionException {
+
     public TimeoutException(String message) {
         super(message);
     }

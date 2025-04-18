@@ -1,11 +1,17 @@
 package viettel.dac.backend.template.entity;
 
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
+
+import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import viettel.dac.backend.common.domain.BaseEntity;
 import viettel.dac.backend.template.enums.TemplateType;
+
 
 import java.util.HashSet;
 import java.util.Map;
@@ -13,13 +19,15 @@ import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "tool_templates")
+@Table(name = "templates")
+@Inheritance(strategy = InheritanceType.JOINED)
+@DiscriminatorColumn(name = "template_type", discriminatorType = DiscriminatorType.STRING)
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class ToolTemplate extends BaseEntity {
+@SuperBuilder
+public class BaseTemplate extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -39,21 +47,20 @@ public class ToolTemplate extends BaseEntity {
     private Map<String, Object> properties;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "template_type", nullable = false)
+    @Column(name = "template_type", insertable = false, updatable = false)
     private TemplateType templateType;
 
     @Column(name = "active")
     private boolean active = true;
 
-    @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "template", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<TemplateTag> tags = new HashSet<>();
 
-    public TemplateTag addTag(String tagName) {
+    public void addTag(String tagName) {
         TemplateTag tag = new TemplateTag();
         tag.setTemplate(this);
         tag.setTagName(tagName);
         this.tags.add(tag);
-        return tag;
     }
 
     public boolean removeTag(String tagName) {
